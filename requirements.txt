@@ -1,0 +1,14 @@
+# Inti — cukup untuk menjalankan bot dan semua situs berbasis API/HTML.
+python-telegram-bot==21.4
+python-jobspy==1.1.80
+supabase==2.7.4
+python-dotenv==1.0.1
+pandas>=2.0.0
+
+# mode webhook (app.py, untuk deploy di Render)
+flask==3.0.3
+gunicorn==22.0.0
+requests==2.32.3
+
+# parsing HTML: web3.career, BCA, dan semua adapter static/SuccessFactors
+beautifulsoup4==4.15.0

@@ -1,0 +1,81 @@
+# Setiap hari jam 01.00 WIB:
+#   job 1 "situs"     : kosongkan tabel jobs, lalu semua situs  (= /reset + /updateall)
+#   job 2 "carikerja" : Indeed & LinkedIn, 68 kata kunci       (= /carikerja semua)
+# Job 2 jalan setelah job 1 selesai (berhasil ATAU gagal). Masing-masing punya
+# jatah 6 jam sendiri dan mengirim ringkasan sendiri ke Telegram.
+#
+# Rahasia (Settings -> Secrets and variables -> Actions -> Secrets):
+#   TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ALLOWED_CHAT_IDS
+# Variabel opsional (tab Variables): SCRAPE_ALL_RESULTS (default 20000)
+#
+# Manual: tab Actions -> "Scrape harian" -> Run workflow.
+name: Scrape harian
+
+on:
+  schedule:
+    # Cron GitHub memakai UTC. 18:00 UTC = 01:00 WIB keesokan harinya.
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      reset:
+        description: "Kosongkan tabel jobs dulu sebelum scrape?"
+        type: boolean
+        default: true
+      carikerja:
+        description: "Jalankan juga Indeed & LinkedIn (68 kata kunci)?"
+        type: boolean
+        default: true
+
+concurrency:
+  group: scrape-harian
+  cancel-in-progress: false
+
+env:
+  TZ: Asia/Jakarta
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  ALLOWED_CHAT_IDS: ${{ secrets.ALLOWED_CHAT_IDS }}
+  SCRAPE_ALL_RESULTS: ${{ vars.SCRAPE_ALL_RESULTS || '20000' }}
+
+jobs:
+  situs:
+    name: Reset + semua situs (/updateall)
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instal library
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-browser.txt
+          python -m playwright install --with-deps chromium
+      - name: Reset lalu scrape semua situs
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.reset }}" = "true" ]; then
+            python jadwal_harian.py --reset
+          else
+            python jadwal_harian.py
+          fi
+
+  carikerja:
+    name: Indeed & LinkedIn (/carikerja semua)
+    needs: situs
+    # Tetap jalan walaupun job situs gagal/timeout, kecuali dimatikan manual.
+    if: ${{ always() && (github.event_name == 'schedule' || inputs.carikerja) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instal library
+        run: pip install -r requirements.txt
+      - name: Cari kerja (68 kata kunci)
+        run: python jadwal_harian.py --carikerja

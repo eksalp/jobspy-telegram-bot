@@ -1,0 +1,16 @@
+[Unit]
+Description=JobSpy Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/jobspy-telegram-bot
+EnvironmentFile=/home/ubuntu/jobspy-telegram-bot/.env
+ExecStart=/home/ubuntu/jobspy-telegram-bot/venv/bin/python /home/ubuntu/jobspy-telegram-bot/bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

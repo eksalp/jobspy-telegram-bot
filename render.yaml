@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: jobspy-telegram-bot
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --timeout 120"
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ALLOWED_CHAT_IDS
+        sync: false
+      - key: DEFAULT_SITES
+        value: indeed,linkedin
+      - key: DEFAULT_LOCATION
+        value: Indonesia
+      - key: DEFAULT_COUNTRY_INDEED
+        value: Indonesia
+      - key: DEFAULT_RESULTS_WANTED
+        value: "30"
+      - key: DEFAULT_HOURS_OLD
+        value: "72"

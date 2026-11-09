@@ -1,0 +1,4 @@
+# OPSIONAL — hanya untuk situs bertanda 🐢 di /sites (astracareer, talentics).
+# playwright 1.47 memaku greenlet==3.0.3 yang tidak bisa dikompilasi di
+# Python 3.13+. Versi di bawah memakai greenlet 3.2.x yang punya wheel siap.
+playwright>=1.51.0

@@ -1,0 +1,19 @@
+# RAHASIA - jangan pernah masuk ke GitHub (repo publik bisa dibaca siapa saja)
+.env
+.env.*
+!.env.example
+glints_session.txt
+*.key
+*.pem
+
+# Lingkungan & cache lokal
+.venv/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# File kerja lokal
+.maganghub_progress.json
+.jadwal.lock
+*.zip
