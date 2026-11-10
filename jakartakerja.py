@@ -74,7 +74,11 @@ def _kumpulkan_link(limit: int) -> list[str]:
         url = BASE_URL + "/" if n == 1 else f"{BASE_URL}/page/{n}/"
         try:
             html = http_get(url, retries=2, timeout=20).text
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            if n == 1:
+                # Halaman pertama gagal = situs menolak/diblokir, bukan
+                # "habis". Lempar supaya alasannya muncul di laporan.
+                raise RuntimeError(f"halaman depan gagal dibuka: {e}") from e
             break  # biasanya 404 setelah halaman terakhir
         baru = 0
         for href in _POLA_LINK.findall(html):

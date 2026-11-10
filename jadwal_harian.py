@@ -203,6 +203,9 @@ def main() -> int:
 
     mulai = time.time()
     specs, _ = sites.resolve(["all"])
+    if not config.WEB3CAREER_API_TOKEN:
+        # Tanpa token, situs ini pasti gagal; lewati supaya laporan bersih.
+        specs = [s for s in specs if s.name != "web3career"]
     catatan: list[str] = []
     total = 0
 
