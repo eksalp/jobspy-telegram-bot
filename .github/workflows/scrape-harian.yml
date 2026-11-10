@@ -81,3 +81,25 @@ jobs:
         run: pip install -r requirements.txt
       - name: Cari kerja (68 kata kunci)
         run: python jadwal_harian.py --carikerja
+
+  # GitHub mematikan jadwal kalau repo 60 hari tanpa aktivitas. Kalau commit
+  # terakhir sudah >= 50 hari, buat commit kosong supaya jadwal tetap hidup.
+  jaga-jadwal:
+    name: Jaga jadwal tetap aktif
+    needs: carikerja
+    if: ${{ always() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Commit kosong kalau repo lama tidak berubah
+        run: |
+          umur=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          echo "Commit terakhir $umur hari lalu"
+          if [ "$umur" -ge 50 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "jaga jadwal tetap aktif"
+            git push
+          fi
