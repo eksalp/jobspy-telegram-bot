@@ -1,6 +1,8 @@
-# Setiap hari jam 01.00 WIB:
-#   job 1 "situs"     : kosongkan tabel jobs, lalu semua situs  (= /reset + /updateall)
-#   job 2 "carikerja" : Indeed & LinkedIn, 68 kata kunci       (= /carikerja semua)
+# Setiap hari jam 00.37 WIB (tabel TIDAK dikosongkan, Jobly tidak pernah kosong):
+#   job 1 "situs"     : semua situs (= /updateall); lowongan situs yang sudah
+#                       tidak muncul lagi dihapus setelah situs itu selesai
+#   job 2 "carikerja" : Indeed & LinkedIn, 68 kata kunci (= /carikerja semua),
+#                       lalu hapus lowongan yang 3 hari tidak muncul lagi
 # Job 2 jalan setelah job 1 selesai (berhasil ATAU gagal). Masing-masing punya
 # jatah 6 jam sendiri dan mengirim ringkasan sendiri ke Telegram.
 #
@@ -13,14 +15,14 @@ name: Scrape harian
 
 on:
   schedule:
-    # Cron GitHub memakai UTC. 18:00 UTC = 01:00 WIB keesokan harinya.
+    # Cron GitHub memakai UTC. 17:37 UTC = 00:37 WIB (sengaja bukan menit :00, jam bulat sering ditunda GitHub) keesokan harinya.
     - cron: "37 17 * * *"
   workflow_dispatch:
     inputs:
       reset:
-        description: "Kosongkan tabel jobs dulu sebelum scrape?"
+        description: "Kosongkan tabel jobs dulu sebelum scrape? (biasanya TIDAK perlu)"
         type: boolean
-        default: true
+        default: false
       carikerja:
         description: "Jalankan juga Indeed & LinkedIn (68 kata kunci)?"
         type: boolean
@@ -40,7 +42,7 @@ env:
 
 jobs:
   situs:
-    name: Reset + semua situs (/updateall)
+    name: Semua situs (/updateall)
     runs-on: ubuntu-latest
     timeout-minutes: 340
     steps:
@@ -54,9 +56,9 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-browser.txt
           python -m playwright install --with-deps chromium
-      - name: Reset lalu scrape semua situs
+      - name: Scrape semua situs
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.reset }}" = "true" ]; then
+          if [ "${{ inputs.reset }}" = "true" ]; then
             python jadwal_harian.py --reset
           else
             python jadwal_harian.py
