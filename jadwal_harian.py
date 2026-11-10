@@ -8,6 +8,7 @@ Scrape SEMUA situs tanpa Telegram -- versi terjadwal dari /updateall dan
     python jadwal_harian.py              # semua situs (= /updateall)
     python jadwal_harian.py --carikerja  # Indeed & LinkedIn, 68 kata kunci
     python jadwal_harian.py --reset      # KOSONGKAN tabel dulu (cara lama)
+    python jadwal_harian.py --situs bca,shopee   # situs tertentu saja
 
 ALUR (tanpa reset): tabel TIDAK dikosongkan, jadi Jobly tidak pernah kosong.
   1. Hasil tiap situs di-upsert: lowongan yang masih ada ter-refresh
@@ -33,6 +34,9 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from bersih_lama import (BASI_HARI, HANYA_DARI_MAC, bersihkan, hapus_basi,
+                         sekarang, tandai)
+
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s",
                     level=logging.INFO)
 # httpx mencatat setiap URL request di level INFO; di GitHub Actions log
@@ -41,62 +45,14 @@ for _nama in ("httpx", "httpcore", "hpack", "urllib3"):
     logging.getLogger(_nama).setLevel(logging.WARNING)
 log = logging.getLogger("jadwal_harian")
 
-# Lowongan yang tidak muncul lagi selama ini dihapus apa pun alasannya.
-BASI_HARI = 3
-
-
-def _sekarang() -> datetime:
-    # Mundur 5 menit sebagai jarak aman kalau jam runner dan jam database
-    # sedikit berbeda. Lowongan yang baru di-upsert pasti lebih baru dari ini,
-    # yang dari scrape kemarin (~24 jam lalu) pasti lebih tua.
-    return datetime.now(timezone.utc) - timedelta(minutes=5)
-
-
-def _tandai(records: list[dict]) -> list[dict]:
-    """Isi updated_at secara eksplisit, supaya penanda "masih ada" tidak
-    bergantung pada trigger set_updated_at di database."""
-    kini = datetime.now(timezone.utc).isoformat()
-    for r in records:
-        r["updated_at"] = kini
-    return records
-
-
-def _hitung_basi(sites: list[str] | None, batas: datetime) -> int:
-    import db
-    q = db.get_client().table("jobs").select("id", count="exact").lt("updated_at", batas.isoformat())
-    if sites:
-        q = q.in_("site", sites)
-    return q.limit(1).execute().count or 0
-
-
-def _hapus_basi(sites: list[str] | None, batas: datetime) -> int:
-    """Hapus per 500 baris supaya tidak kena statement timeout Supabase."""
-    import db
-    client = db.get_client()
-    total = 0
-    while True:
-        q = client.table("jobs").select("id").lt("updated_at", batas.isoformat())
-        if sites:
-            q = q.in_("site", sites)
-        ids = [r["id"] for r in (q.limit(500).execute().data or [])]
-        if not ids:
-            return total
-        client.table("jobs").delete().in_("id", ids).execute()
-        total += len(ids)
-
-
-def _bersihkan(sites: list[str], batas: datetime, baru: int) -> str:
-    """Hapus lowongan lama situs ini yang tidak muncul lagi. Return catatan."""
-    try:
-        basi = _hitung_basi(sites, batas)
-        if not basi:
-            return ""
-        if basi > baru:
-            return f" (⚠️ {basi} lama dipertahankan: hasil hari ini lebih sedikit)"
-        return f" (−{_hapus_basi(sites, batas)} tutup)"
-    except Exception as e:  # noqa: BLE001
-        log.exception("Gagal hapus lowongan lama %s", sites)
-        return f" (⚠️ gagal hapus lama: {str(e)[:40]})"
+def _arg(nama: str) -> str | None:
+    """Nilai argumen "--nama nilai" atau "--nama=nilai"."""
+    for i, a in enumerate(sys.argv):
+        if a == nama and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if a.startswith(nama + "="):
+            return a.split("=", 1)[1]
+    return None
 
 
 def _kirim(teks: str) -> None:
@@ -136,7 +92,7 @@ def carikerja() -> int:
     from scraper import df_to_records, run_search
 
     mulai = time.time()
-    batas = _sekarang()
+    batas = sekarang()
     kata = _daftar_kata("semua")
     catatan: list[str] = []
     total = 0
@@ -153,7 +109,7 @@ def carikerja() -> int:
             if not records:
                 catatan.append(f"⚪ {term}: 0")
                 continue
-            unik = _tandai(db.deduplicate(records)[0])
+            unik = tandai(db.deduplicate(records)[0])
             simpan = db.upsert_jobs(unik)
             total += simpan
             for r in unik:
@@ -168,12 +124,13 @@ def carikerja() -> int:
     for situs in SITUS:
         baru = per_situs.get(situs, 0)
         if baru:
-            bersih.append(f"{situs}: {baru}" + _bersihkan([situs], batas, baru))
+            bersih.append(f"{situs}: {baru}" + bersihkan([situs], batas, baru))
         else:
             bersih.append(f"{situs}: 0, data lama dipertahankan")
     # Lowongan semua situs yang BASI_HARI hari tidak muncul lagi.
     try:
-        lama = _hapus_basi(None, datetime.now(timezone.utc) - timedelta(days=BASI_HARI))
+        lama = hapus_basi(None, datetime.now(timezone.utc) - timedelta(days=BASI_HARI),
+                           kecuali=HANYA_DARI_MAC)
         if lama:
             bersih.append(f"−{lama} lowongan yang {BASI_HARI} hari tidak muncul lagi")
     except Exception:  # noqa: BLE001
@@ -203,6 +160,14 @@ def main() -> int:
 
     mulai = time.time()
     specs, _ = sites.resolve(["all"])
+    pilihan = _arg("--situs")
+    if pilihan:
+        nama = {n.strip() for n in pilihan.split(",") if n.strip()}
+        specs = [s for s in specs if s.name in nama]
+        judul = "💻 Scrape dari Mac (" + ", ".join(s.label for s in specs) + ")"
+    else:
+        specs = [s for s in specs if s.name not in HANYA_DARI_MAC]
+        judul = "🗓 Scrape semua situs"
     if not config.WEB3CAREER_API_TOKEN:
         # Tanpa token, situs ini pasti gagal; lewati supaya laporan bersih.
         specs = [s for s in specs if s.name != "web3career"]
@@ -222,7 +187,7 @@ def main() -> int:
 
     for i, spec in enumerate(specs, start=1):
         log.info("(%d/%d) %s ...", i, len(specs), spec.label)
-        batas = _sekarang()
+        batas = sekarang()
         try:
             records = sites.run(spec, query="semua", limit=config.SCRAPE_ALL_RESULTS,
                                 chat_id="jadwal", search_location=config.DEFAULT_LOCATION)
@@ -233,7 +198,7 @@ def main() -> int:
         if not records:
             catatan.append(f"⚪ {spec.label}: 0")
             continue
-        unik = _tandai(db.deduplicate(records)[0])
+        unik = tandai(db.deduplicate(records)[0])
         try:
             simpan = db.upsert_jobs(unik)
         except Exception as e:  # noqa: BLE001
@@ -244,12 +209,12 @@ def main() -> int:
         tambahan = ""
         if not direset:
             nama_situs = sorted({str(r.get("site")) for r in unik if r.get("site")})
-            tambahan = _bersihkan(nama_situs, batas, simpan)
+            tambahan = bersihkan(nama_situs, batas, simpan)
         catatan.append(f"✅ {spec.label}: {simpan}{tambahan}")
         log.info("   %s: %d tersimpan", spec.label, simpan)
 
     menit = (time.time() - mulai) / 60
-    _kirim(f"🗓 Scrape semua situs selesai ({menit:.0f} menit): "
+    _kirim(f"{judul} selesai ({menit:.0f} menit): "
            f"{total} loker tersimpan/terupdate\n\n" + "\n".join(catatan))
     return 0
 

@@ -34,6 +34,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 import config
 import db
 import sites
+from bersih_lama import bersihkan, sekarang, tandai
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ async def _jalankan_situs(
         parse_mode=ParseMode.MARKDOWN,
     )
 
+    batas = sekarang()
     try:
         records = await asyncio.to_thread(
             sites.run,
@@ -85,6 +87,7 @@ async def _jalankan_situs(
         return
 
     unik, kembar = db.deduplicate(records)
+    unik = tandai(unik)
     try:
         tersimpan = await asyncio.to_thread(db.upsert_jobs, unik)
     except Exception as e:  # noqa: BLE001
@@ -99,6 +102,11 @@ async def _jalankan_situs(
     catatan = ""
     if kembar:
         catatan = f"\n\u2139\ufe0f {sum(kembar.values())} duplikat dibuang"
+    tutup = await asyncio.to_thread(
+        bersihkan, sorted({str(r["site"]) for r in unik if r.get("site")}),
+        batas, tersimpan)
+    if tutup:
+        catatan += "\n" + escape_md(tutup.strip(" ()"))
 
     await hasil.edit_text(
         f"\u2705 *{escape_md(spec.label)}*: {tersimpan} loker "
@@ -181,6 +189,7 @@ def _buat_handler_semua(is_allowed, escape_md):
             except Exception:  # noqa: BLE001
                 pass
 
+            batas = sekarang()
             try:
                 records = await asyncio.to_thread(
                     sites.run, spec, query="semua",
@@ -199,6 +208,7 @@ def _buat_handler_semua(is_allowed, escape_md):
             # Disimpan SEKARANG, sebelum lanjut ke situs berikutnya --
             # bukan ditumpuk dulu. Lihat catatan fungsi di atas.
             unik, kembar = db.deduplicate(records)
+            unik = tandai(unik)
             try:
                 tersimpan = await asyncio.to_thread(db.upsert_jobs, unik)
             except Exception as e:  # noqa: BLE001
@@ -211,7 +221,10 @@ def _buat_handler_semua(is_allowed, escape_md):
 
             total_tersimpan += tersimpan
             total_kembar += sum(kembar.values())
-            catatan.append(f"\u2705 {spec.label}: {tersimpan}")
+            tutup = await asyncio.to_thread(
+                bersihkan, sorted({str(r["site"]) for r in unik if r.get("site")}),
+                batas, tersimpan)
+            catatan.append(f"\u2705 {spec.label}: {tersimpan}{tutup}")
 
         ringkas = "\n".join(escape_md(c) for c in catatan)
         if total_kembar:
