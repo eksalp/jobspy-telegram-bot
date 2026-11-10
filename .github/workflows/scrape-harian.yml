@@ -14,7 +14,7 @@ name: Scrape harian
 on:
   schedule:
     # Cron GitHub memakai UTC. 18:00 UTC = 01:00 WIB keesokan harinya.
-    - cron: "0 18 * * *"
+    - cron: "37 17 * * *"
   workflow_dispatch:
     inputs:
       reset:
